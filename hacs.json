@@ -1,0 +1,10 @@
+{
+  "name": "Nordpool Price Chart",
+  "version": "1.0.0",
+  "hacs": "1.6.0",
+  "homeassistant": "2024.1.0",
+  "documentations": "https://github.com/Sven2410/nordpool-price-chart/blob/main/README.md",
+  "issues": "https://github.com/Sven2410/nordpool-price-chart/issues",
+  "filename": "dist/nordpool-price-chart.js",
+  "content_in_root": false
+}
