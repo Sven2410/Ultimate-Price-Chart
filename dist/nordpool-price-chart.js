@@ -223,15 +223,15 @@ class NordpoolPriceChart extends HTMLElement {
   .scrollbar-row { display:flex; align-items:center; margin:4px 0 10px; }
   .scrollbar-spacer { flex-shrink:0; width:46px; }
   .scrollbar-track {
-    flex:1; min-width:0; height:6px;
-    background:rgba(128,128,128,0.18); border-radius:3px;
+    flex:1; min-width:0; height:16px;
+    background:rgba(128,128,128,0.15); border-radius:8px;
     position:relative; cursor:pointer;
     touch-action:none; user-select:none; -webkit-user-select:none;
   }
   .scrollbar-thumb {
-    position:absolute; top:0; left:0; height:100%;
-    min-width:28px; background:var(--primary-color);
-    border-radius:3px; cursor:grab; opacity:0.75; transition:opacity 0.15s;
+    position:absolute; top:3px; bottom:3px; left:0;
+    min-width:44px; background:var(--primary-color);
+    border-radius:5px; cursor:grab; opacity:0.65; transition:opacity 0.15s;
     touch-action:none;
   }
   .scrollbar-thumb.dragging { opacity:1; cursor:grabbing; }
@@ -428,7 +428,7 @@ class NordpoolPriceChart extends HTMLElement {
       if (total <= visible) { thumb.style.display = 'none'; return; }
       thumb.style.display = 'block';
       const ratio    = visible / total;
-      const thumbW   = Math.max(28, trackW * ratio);
+      const thumbW   = Math.max(44, trackW * ratio);
       const maxLeft  = trackW - thumbW;
       const thumbX   = (scroll.scrollLeft / (total - visible)) * maxLeft;
       thumb.style.width = `${thumbW}px`;
