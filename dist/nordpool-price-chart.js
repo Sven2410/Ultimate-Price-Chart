@@ -66,8 +66,9 @@ class NordpoolPriceChartEditor extends HTMLElement {
     const form = this.querySelector('ha-form');
     form.hass   = this._hass;
     form.schema = [
-      { name:'entity', selector:{ entity:{ domain:'sensor' } }, label:'Energieprijs sensor' },
-      { name:'title',  selector:{ text:{} },                    label:'Kaart titel'          },
+      { name:'entity',       selector:{ entity:{ domain:'sensor' } },        label:'Energieprijs sensor'           },
+      { name:'title',        selector:{ text:{} },                            label:'Kaart titel'                   },
+      { name:'allin_entity', selector:{ entity:{ domain:'input_boolean' } },  label:'All-In toggle opslaan (optioneel)' },
     ];
     form.data = this._data();
     form.addEventListener('value-changed', (e) => {
@@ -102,7 +103,7 @@ class NordpoolPriceChart extends HTMLElement {
     this._inkoop         = 0;
     this._belasting      = 0;
     // Focus tracking — prevents HA from overwriting while user types
-    this._inkoopFocused    = false;
+    this._allinInit      = false;
     this._belastingFocused = false;
   }
 
@@ -221,7 +222,6 @@ class NordpoolPriceChart extends HTMLElement {
 
   /* Custom scrollbar — always visible, works on iOS/Android */
   .scrollbar-row { display:flex; align-items:center; margin:4px 0 10px; }
-  .scrollbar-spacer { flex-shrink:0; width:46px; }
   .scrollbar-track {
     flex:1; min-width:0; height:16px;
     background:rgba(128,128,128,0.15); border-radius:8px;
@@ -308,7 +308,6 @@ class NordpoolPriceChart extends HTMLElement {
   </div>
 
   <div class="scrollbar-row">
-    <div class="scrollbar-spacer"></div>
     <div class="scrollbar-track" id="scrollbar-track">
       <div class="scrollbar-thumb" id="scrollbar-thumb"></div>
     </div>
@@ -351,6 +350,12 @@ class NordpoolPriceChart extends HTMLElement {
     // Toggle
     this.shadowRoot.getElementById('allin-toggle').addEventListener('change', (e) => {
       this._allIn = e.target.checked;
+      // Persist via HA input_boolean if configured
+      const ent = this._config.allin_entity;
+      if (ent && this._hass) {
+        this._hass.callService('input_boolean',
+          this._allIn ? 'turn_on' : 'turn_off', { entity_id: ent });
+      }
       this._updateDOM();
     });
 
@@ -615,6 +620,15 @@ class NordpoolPriceChart extends HTMLElement {
 
     // Sync helpers (respects focus)
     this._syncHelpers();
+
+    // Restore All-In state from HA input_boolean (once per session load)
+    if (!this._allinInit) {
+      this._allinInit = true;
+      const ent = this._config.allin_entity;
+      if (ent && this._hass?.states[ent]) {
+        this._allIn = this._hass.states[ent].state === 'on';
+      }
+    }
 
     // Header
     const q = (id) => this.shadowRoot.getElementById(id);
