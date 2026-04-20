@@ -1,10 +1,10 @@
 /**
  * Nordpool Price Chart — Home Assistant Custom Card
- * @version 1.3.0
+ * @version 1.4.0
  * @author Sven2410
  */
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 console.info(
   `%c NORDPOOL-PRICE-CHART %c v${VERSION} `,
   'background:#026FA1;color:#fff;padding:2px 6px;border-radius:4px 0 0 4px;font-weight:bold',
@@ -19,19 +19,15 @@ const fmt = (d) => {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 };
 
-const roundRect = (ctx, x, y, w, h, radii) => {
-  const r = Array.isArray(radii) ? radii : [radii,radii,radii,radii];
-  const [tl,tr,br,bl] = r.map(v => Math.min(v, Math.abs(w)/2, Math.abs(h)/2));
+const rRect = (ctx, x, y, w, h, radii) => {
+  const [tl,tr,br,bl] = (Array.isArray(radii) ? radii : [radii,radii,radii,radii])
+    .map(r => Math.min(r, Math.abs(w)/2, Math.abs(h)/2));
   ctx.beginPath();
   ctx.moveTo(x+tl, y);
-  ctx.lineTo(x+w-tr, y);
-  ctx.arcTo(x+w, y,   x+w, y+h, tr);
-  ctx.lineTo(x+w, y+h-br);
-  ctx.arcTo(x+w, y+h, x,   y+h, br);
-  ctx.lineTo(x+bl, y+h);
-  ctx.arcTo(x,   y+h, x,   y,   bl);
-  ctx.lineTo(x, y+tl);
-  ctx.arcTo(x,   y,   x+w, y,   tl);
+  ctx.lineTo(x+w-tr, y);        ctx.arcTo(x+w, y,   x+w, y+h, tr);
+  ctx.lineTo(x+w,   y+h-br);   ctx.arcTo(x+w, y+h, x,   y+h, br);
+  ctx.lineTo(x+bl,  y+h);      ctx.arcTo(x,   y+h, x,   y,   bl);
+  ctx.lineTo(x,     y+tl);     ctx.arcTo(x,   y,   x+w, y,   tl);
   ctx.closePath();
 };
 
@@ -39,36 +35,28 @@ const roundRect = (ctx, x, y, w, h, radii) => {
 //  EDITOR
 // ─────────────────────────────────────────────
 class NordpoolPriceChartEditor extends HTMLElement {
-  constructor() {
-    super();
-    this._config = {};
-    this._hass   = null;
-    this._ready  = false;
-  }
+  constructor() { super(); this._config={}; this._hass=null; this._ready=false; }
 
   set hass(h) {
     this._hass = h;
-    if (this._ready) { const f = this.querySelector('ha-form'); if (f) f.hass = h; }
+    if (this._ready) { const f=this.querySelector('ha-form'); if(f) f.hass=h; }
     else this._init();
   }
 
   setConfig(c) {
-    this._config = { entity: 'sensor.current_electricity_market_price', title: 'Energieprijzen', ...c };
-    if (this._ready) { const f = this.querySelector('ha-form'); if (f) f.data = this._data(); }
+    this._config = { entity:'sensor.current_electricity_market_price', title:'Energieprijzen', ...c };
+    if (this._ready) { const f=this.querySelector('ha-form'); if(f) f.data=this._data(); }
     else this._init();
   }
 
   _data() {
-    return {
-      entity: this._config.entity || 'sensor.current_electricity_market_price',
-      title:  this._config.title  || 'Energieprijzen',
-    };
+    return { entity: this._config.entity||'sensor.current_electricity_market_price',
+             title:  this._config.title ||'Energieprijzen' };
   }
 
   _fire() {
-    this.dispatchEvent(new CustomEvent('config-changed', {
-      detail: { config: { ...this._config } }, bubbles: true, composed: true,
-    }));
+    this.dispatchEvent(new CustomEvent('config-changed',
+      { detail:{ config:{...this._config} }, bubbles:true, composed:true }));
   }
 
   _init() {
@@ -78,16 +66,15 @@ class NordpoolPriceChartEditor extends HTMLElement {
     const form = this.querySelector('ha-form');
     form.hass   = this._hass;
     form.schema = [
-      { name: 'entity', selector: { entity: { domain: 'sensor' } }, label: 'Energieprijs sensor' },
-      { name: 'title',  selector: { text: {} },                     label: 'Kaart titel'          },
+      { name:'entity', selector:{ entity:{ domain:'sensor' } }, label:'Energieprijs sensor' },
+      { name:'title',  selector:{ text:{} },                    label:'Kaart titel'          },
     ];
     form.data = this._data();
     form.addEventListener('value-changed', (e) => {
-      const v = e.detail.value || {};
+      const v = e.detail.value||{};
       let changed = false;
-      for (const k of Object.keys(this._config)) {
-        if (v[k] !== undefined && v[k] !== this._config[k]) { this._config[k] = v[k]; changed = true; }
-      }
+      for (const k of Object.keys(this._config))
+        if (v[k]!==undefined && v[k]!==this._config[k]) { this._config[k]=v[k]; changed=true; }
       if (changed) this._fire();
     });
   }
@@ -99,26 +86,29 @@ class NordpoolPriceChartEditor extends HTMLElement {
 class NordpoolPriceChart extends HTMLElement {
 
   static getConfigElement() { return document.createElement('nordpool-price-chart-editor'); }
-  static getStubConfig()    { return { entity: 'sensor.current_electricity_market_price', title: 'Energieprijzen' }; }
+  static getStubConfig()    { return { entity:'sensor.current_electricity_market_price', title:'Energieprijzen' }; }
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this._config      = {};
-    this._hass        = null;
-    this._domBuilt    = false;
-    this._allIn       = false;
-    this._barData     = [];
-    this._nowScrolled = false;
-    this._lastPrices  = null;
-    // Local config — no HA helpers needed, values persist per session
-    this._inkoop    = 0.0;
-    this._belasting = 0.0;
+    this.attachShadow({ mode:'open' });
+    this._config         = {};
+    this._hass           = null;
+    this._domBuilt       = false;
+    this._allIn          = false;
+    this._barData        = [];   // CSS px relative to bars-canvas
+    this._lastPrices     = null;
+    this._nowScrolled    = false;
+    // Local price config values — source of truth
+    this._inkoop         = 0;
+    this._belasting      = 0;
+    // Focus tracking — prevents HA from overwriting while user types
+    this._inkoopFocused    = false;
+    this._belastingFocused = false;
   }
 
   setConfig(config) {
     if (!config.entity) throw new Error('Geen entiteit geconfigureerd');
-    this._config = { entity: 'sensor.current_electricity_market_price', title: 'Energieprijzen', ...config };
+    this._config = { entity:'sensor.current_electricity_market_price', title:'Energieprijzen', ...config };
   }
 
   set hass(hass) {
@@ -126,246 +116,160 @@ class NordpoolPriceChart extends HTMLElement {
     this._render();
   }
 
-  // ── Data parsing ─────────────────────────
+  // ── Data parsing ─────────────────────────────────────────────────────
 
   _getPriceData() {
     const state = this._hass?.states[this._config.entity];
     if (!state) return [];
-    const attr = state.attributes || {};
+    const attr = state.attributes||{};
 
-    const toDate     = (v) => v ? new Date(v) : null;
-    const validEntry = (d) =>
+    const toDate = (v) => v ? new Date(v) : null;
+    const ok     = (d) =>
       d.start instanceof Date && !isNaN(d.start) &&
       d.end   instanceof Date && !isNaN(d.end)   &&
       typeof d.price === 'number' && isFinite(d.price);
-    const autoDiv = (sample) => (typeof sample === 'number' && sample > 1 ? 1000 : 1);
+    const autoDiv = (sample) => (typeof sample==='number' && sample>1 ? 1000 : 1);
 
-    // Format 1 — Frank Energie / Tibber: attributes.prices [{from, till, price}]
-    if (Array.isArray(attr.prices) && attr.prices.length) {
+    // Format 1 — Frank Energie / Tibber: .prices [{from,till,price}]
+    if (Array.isArray(attr.prices) && attr.prices.length)
       return attr.prices
-        .map((d) => ({
-          start: toDate(d.from ?? d.start ?? d.start_time),
-          end:   toDate(d.till ?? d.end   ?? d.end_time),
-          price: d.price ?? d.value ?? 0,
-        }))
-        .filter(validEntry)
-        .sort((a,b) => a.start - b.start);
-    }
+        .map(d=>({ start:toDate(d.from??d.start??d.start_time), end:toDate(d.till??d.end??d.end_time), price:d.price??d.value??0 }))
+        .filter(ok).sort((a,b)=>a.start-b.start);
 
-    // Format 2 — Template sensor: attributes.data [{start_time, end_time, price_per_kwh}]
-    if (Array.isArray(attr.data) && attr.data.length) {
+    // Format 2 — Template sensor: .data [{start_time,end_time,price_per_kwh}]
+    if (Array.isArray(attr.data) && attr.data.length)
       return attr.data
-        .map((d) => ({
-          start: toDate(d.start_time ?? d.start),
-          end:   toDate(d.end_time   ?? d.end),
-          price: d.price_per_kwh ?? d.price ?? 0,
-        }))
-        .filter(validEntry)
-        .sort((a,b) => a.start - b.start);
-    }
+        .map(d=>({ start:toDate(d.start_time??d.start), end:toDate(d.end_time??d.end), price:d.price_per_kwh??d.price??0 }))
+        .filter(ok).sort((a,b)=>a.start-b.start);
 
-    // Format 3 — Native Nordpool: raw_today / raw_tomorrow [{start, end, value}]
-    const combined = [...(attr.raw_today || attr.prices_today || []),
-                      ...(attr.raw_tomorrow || attr.prices_tomorrow || [])];
+    // Format 3 — Native Nordpool: .raw_today / .raw_tomorrow [{start,end,value}]
+    const combined = [...(attr.raw_today||attr.prices_today||[]), ...(attr.raw_tomorrow||attr.prices_tomorrow||[])];
     if (combined.length) {
-      const sample = combined.find(d => (d.value ?? 0) > 0)?.value ?? 0;
-      const div    = autoDiv(sample);
+      const div = autoDiv(combined.find(d=>(d.value??0)>0)?.value??0);
       return combined
-        .map((d) => ({
-          start: toDate(d.start ?? d.start_time),
-          end:   toDate(d.end   ?? d.end_time),
-          price: (d.value ?? d.price ?? 0) / div,
-        }))
-        .filter(validEntry)
-        .sort((a,b) => a.start - b.start);
+        .map(d=>({ start:toDate(d.start??d.start_time), end:toDate(d.end??d.end_time), price:(d.value??d.price??0)/div }))
+        .filter(ok).sort((a,b)=>a.start-b.start);
     }
 
-    // Format 4 — Simple float arrays: attributes.today / attributes.tomorrow
-    const todayArr    = attr.today    || [];
-    const tomorrowArr = attr.tomorrow || [];
-    if (todayArr.length || tomorrowArr.length) {
+    // Format 4 — Float arrays: .today / .tomorrow
+    const tA = attr.today||[], tmA = attr.tomorrow||[];
+    if (tA.length||tmA.length) {
       const result = [];
-      const buildSlots = (arr, base) => {
-        const div = autoDiv(arr.find(v => v > 0) ?? 0);
-        arr.forEach((price, i) => {
-          const start = new Date(base); start.setHours(i,0,0,0);
-          const end   = new Date(start); end.setHours(i+1);
-          result.push({ start, end, price: (typeof price === 'number' ? price : 0) / div });
+      const build = (arr, base) => {
+        const div = autoDiv(arr.find(v=>v>0)??0);
+        arr.forEach((p,i) => {
+          const s=new Date(base); s.setHours(i,0,0,0);
+          const e=new Date(s); e.setHours(i+1);
+          result.push({ start:s, end:e, price:(typeof p==='number'?p:0)/div });
         });
       };
-      const today    = new Date(); today.setHours(0,0,0,0);
-      const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
-      buildSlots(todayArr, today);
-      buildSlots(tomorrowArr, tomorrow);
-      return result.filter(validEntry);
+      const today=new Date(); today.setHours(0,0,0,0);
+      const tom=new Date(today); tom.setDate(tom.getDate()+1);
+      build(tA,today); build(tmA,tom);
+      return result.filter(ok);
     }
-
     return [];
   }
 
-  _toAllIn(marketEuro) {
-    return (marketEuro + this._inkoop + this._belasting) * 1.21;
-  }
+  _getHelper(id) { return parseFloat(this._hass?.states[id]?.state)||0; }
+  _toAllIn(p)    { return (p + this._inkoop + this._belasting) * 1.21; }
+  _disp(item)    { return this._allIn ? this._toAllIn(item.price) : item.price; }
 
-  // ── DOM lifecycle ────────────────────────
+  // ── DOM lifecycle ─────────────────────────────────────────────────────
 
   _render() {
-    if (!this._domBuilt) { this._buildDOM(); this._domBuilt = true; }
+    if (!this._domBuilt) { this._buildDOM(); this._domBuilt=true; }
     this._updateDOM();
   }
 
   _buildDOM() {
     this.shadowRoot.innerHTML = `
 <style>
-  :host { display: block; }
-
-  ha-card {
-    padding: 16px 14px 14px;
-    box-sizing: border-box;
-    overflow: visible !important;
-  }
+  :host { display:block; }
+  ha-card { padding:16px 14px 14px; box-sizing:border-box; overflow:visible!important; }
 
   /* Header */
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-  }
-  .title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--primary-text-color);
-  }
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  .toggle-label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--secondary-text-color);
-    transition: color 0.2s;
-    white-space: nowrap;
-  }
-  .toggle-label.active { color: var(--primary-color); }
+  .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; gap:8px; }
+  .title-group { display:flex; flex-direction:column; gap:3px; min-width:0; }
+  .title { font-size:1rem; font-weight:700; color:var(--primary-text-color); }
+  .avg-label { font-size:0.76rem; color:var(--secondary-text-color); }
 
-  /* Toggle switch */
-  .toggle {
-    position: relative;
-    width: 46px;
-    height: 26px;
-    cursor: pointer;
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    flex-shrink: 0;
-  }
+  /* Toggle */
+  .toggle-row { display:flex; align-items:center; gap:8px; flex-shrink:0; padding-top:2px; }
+  .toggle-label { font-size:0.76rem; font-weight:600; color:var(--secondary-text-color); transition:color 0.2s; white-space:nowrap; }
+  .toggle-label.active { color:var(--primary-color); }
+  .toggle { position:relative; width:46px; height:26px; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; flex-shrink:0; }
   .toggle input { opacity:0; width:0; height:0; position:absolute; }
-  .toggle-track {
-    position: absolute; inset: 0;
-    border-radius: 13px;
-    background: var(--divider-color);
-    transition: background 0.25s ease;
-  }
-  .toggle input:checked ~ .toggle-track { background: var(--primary-color); }
-  .toggle-thumb {
-    position: absolute;
-    top: 3px; left: 3px;
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 5px rgba(0,0,0,0.35);
-    transition: transform 0.25s cubic-bezier(.4,0,.2,1);
-  }
-  .toggle input:checked ~ .toggle-thumb { transform: translateX(20px); }
+  .toggle-track { position:absolute; inset:0; border-radius:13px; background:var(--divider-color); transition:background 0.25s; }
+  .toggle input:checked~.toggle-track { background:var(--primary-color); }
+  .toggle-thumb { position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 5px rgba(0,0,0,0.35); transition:transform 0.25s cubic-bezier(.4,0,.2,1); }
+  .toggle input:checked~.toggle-thumb { transform:translateX(20px); }
 
-  /* Chart */
-  .chart-wrapper { position: relative; width: 100%; margin-bottom: 12px; }
+  /* Chart layout — two-canvas: sticky Y-axis + scrollable bars */
+  .chart-wrapper { display:flex; align-items:flex-start; margin-bottom:4px; position:relative; }
+  #yaxis-canvas { display:block; flex-shrink:0; }
   .chart-scroll {
-    width: 100%;
-    height: 220px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: var(--divider-color) transparent;
-    cursor: crosshair;
+    flex:1; min-width:0;
+    overflow-x:scroll;       /* always show scrollbar */
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:thin;
+    scrollbar-color:var(--primary-color) rgba(128,128,128,0.12);
+    cursor:crosshair;
   }
-  .chart-scroll::-webkit-scrollbar { height: 3px; }
-  .chart-scroll::-webkit-scrollbar-thumb { background: var(--divider-color); border-radius: 2px; }
-  canvas { display: block; }
+  .chart-scroll::-webkit-scrollbar { height:6px; }
+  .chart-scroll::-webkit-scrollbar-track { background:rgba(128,128,128,0.1); border-radius:3px; }
+  .chart-scroll::-webkit-scrollbar-thumb { background:var(--primary-color); border-radius:3px; opacity:0.8; }
+  #bars-canvas { display:block; }
 
-  /* Tooltip */
+  /* Tooltip — positioned relative to .chart-wrapper */
   .tooltip {
-    position: absolute; top: 0; left: 0;
-    background: var(--card-background-color, rgba(20,20,30,0.97));
-    border: 1px solid var(--divider-color);
-    border-radius: 10px;
-    padding: 9px 13px;
-    font-size: 0.78rem;
-    color: var(--primary-text-color);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.12s;
-    white-space: nowrap;
-    z-index: 200;
-    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    position:absolute; top:0; left:0;
+    background:var(--card-background-color,rgba(18,18,28,0.97));
+    border:1px solid var(--divider-color); border-radius:10px;
+    padding:9px 13px; font-size:0.78rem; color:var(--primary-text-color);
+    pointer-events:none; opacity:0; transition:opacity 0.1s;
+    white-space:nowrap; z-index:300; box-shadow:0 6px 24px rgba(0,0,0,0.45);
   }
-  .tooltip.visible { opacity: 1; }
-  .tt-time   { font-weight: 700; color: var(--primary-color); margin-bottom: 4px; font-size: 0.82rem; }
-  .tt-market { color: var(--primary-text-color); }
-  .tt-allin  { color: var(--secondary-text-color); font-size: 0.73rem; margin-top: 3px; }
-  .tt-sep    { height: 1px; background: var(--divider-color); margin: 5px 0; }
+  .tooltip.visible { opacity:1; }
+  .tt-time   { font-weight:700; color:var(--primary-color); margin-bottom:4px; font-size:0.82rem; }
+  .tt-market { color:var(--primary-text-color); }
+  .tt-allin  { color:var(--secondary-text-color); font-size:0.73rem; margin-top:3px; }
+  .tt-sep    { height:1px; background:var(--divider-color); margin:5px 0; }
 
   /* Stats */
-  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-  .stat-card {
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: var(--secondary-background-color);
-    border: 1px solid var(--divider-color);
-  }
-  .stat-label {
-    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.6px;
-    color: var(--secondary-text-color); margin-bottom: 4px;
-    display: flex; align-items: center; gap: 5px;
-  }
-  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-  .stat-value { font-size: 1.05rem; font-weight: 700; color: var(--primary-text-color); line-height: 1.2; }
-  .stat-time  { font-size: 0.7rem; color: var(--secondary-text-color); margin-top: 2px; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; margin-top:8px; }
+  .stat-card { padding:10px 12px; border-radius:12px; background:var(--secondary-background-color); border:1px solid var(--divider-color); }
+  .stat-label { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.6px; color:var(--secondary-text-color); margin-bottom:4px; display:flex; align-items:center; gap:5px; }
+  .dot { width:7px; height:7px; border-radius:50%; display:inline-block; flex-shrink:0; }
+  .stat-value { font-size:1.05rem; font-weight:700; color:var(--primary-text-color); line-height:1.2; }
+  .stat-time  { font-size:0.7rem; color:var(--secondary-text-color); margin-top:2px; }
 
   /* Price config */
-  .price-config { border-top: 1px solid var(--divider-color); padding-top: 12px; display: none; }
-  .price-config.visible { display: block; }
-  .config-title {
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.6px; color: var(--secondary-text-color); margin-bottom: 10px;
-  }
-  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .config-field { display: flex; flex-direction: column; gap: 4px; }
-  .config-field label { font-size: 0.72rem; color: var(--secondary-text-color); }
+  .price-config { border-top:1px solid var(--divider-color); padding-top:12px; display:none; }
+  .price-config.visible { display:block; }
+  .config-title { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--secondary-text-color); margin-bottom:10px; }
+  .config-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .config-field { display:flex; flex-direction:column; gap:4px; }
+  .config-field label { font-size:0.72rem; color:var(--secondary-text-color); }
   .config-field input {
-    background: var(--secondary-background-color);
-    border: 1.5px solid var(--divider-color);
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 0.92rem;
-    color: var(--primary-text-color);
-    width: 100%; box-sizing: border-box; min-height: 44px;
-    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-    outline: none; transition: border-color 0.2s;
-    -moz-appearance: textfield;
+    background:var(--secondary-background-color); border:1.5px solid var(--divider-color);
+    border-radius:8px; padding:8px 10px; font-size:0.92rem; color:var(--primary-text-color);
+    width:100%; box-sizing:border-box; min-height:44px;
+    touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+    outline:none; transition:border-color 0.2s; -moz-appearance:textfield;
   }
   .config-field input::-webkit-outer-spin-button,
-  .config-field input::-webkit-inner-spin-button { -webkit-appearance: none; }
-  .config-field input:focus { border-color: var(--primary-color); }
+  .config-field input::-webkit-inner-spin-button { -webkit-appearance:none; }
+  .config-field input:focus { border-color:var(--primary-color); }
 </style>
 
 <ha-card>
   <div class="header">
-    <div class="title" id="card-title">Energieprijzen</div>
+    <div class="title-group">
+      <div class="title" id="card-title">Energieprijzen</div>
+      <div class="avg-label" id="avg-label">Gemiddeld: — ct/kWh</div>
+    </div>
     <div class="toggle-row">
       <span class="toggle-label" id="toggle-label">Marktprijs</span>
       <label class="toggle" title="Schakel All-In prijs in/uit">
@@ -376,9 +280,10 @@ class NordpoolPriceChart extends HTMLElement {
     </div>
   </div>
 
-  <div class="chart-wrapper">
+  <div class="chart-wrapper" id="chart-wrapper">
+    <canvas id="yaxis-canvas"></canvas>
     <div class="chart-scroll" id="chart-scroll">
-      <canvas id="chart-canvas"></canvas>
+      <canvas id="bars-canvas"></canvas>
     </div>
     <div class="tooltip" id="tooltip">
       <div class="tt-time"   id="tt-time"></div>
@@ -406,11 +311,11 @@ class NordpoolPriceChart extends HTMLElement {
     <div class="config-grid">
       <div class="config-field">
         <label for="inp-inkoop">Inkoopvergoeding (€/kWh)</label>
-        <input type="number" id="inp-inkoop" step="0.0001" min="0" placeholder="0.0000" value="0">
+        <input type="number" id="inp-inkoop" step="0.0001" min="0" placeholder="0.0000">
       </div>
       <div class="config-field">
         <label for="inp-belasting">Energiebelasting (€/kWh)</label>
-        <input type="number" id="inp-belasting" step="0.0001" min="0" placeholder="0.0000" value="0">
+        <input type="number" id="inp-belasting" step="0.0001" min="0" placeholder="0.0000">
       </div>
     </div>
   </div>
@@ -419,45 +324,122 @@ class NordpoolPriceChart extends HTMLElement {
     this._bindEvents();
   }
 
+  // ── Event binding ─────────────────────────────────────────────────────
+
   _bindEvents() {
-    // Toggle All-In
+    // Toggle
     this.shadowRoot.getElementById('allin-toggle').addEventListener('change', (e) => {
       this._allIn = e.target.checked;
       this._updateDOM();
     });
 
-    // Inputs update local state immediately — HA is NOT involved
-    this.shadowRoot.getElementById('inp-inkoop').addEventListener('input', (e) => {
+    // ── Inkoop input ──
+    // Focus/blur: only save to HA on blur, never let HA overwrite while focused
+    const inpInkoop = this.shadowRoot.getElementById('inp-inkoop');
+    inpInkoop.addEventListener('focus', () => { this._inkoopFocused = true; });
+    inpInkoop.addEventListener('blur',  () => {
+      this._inkoopFocused = false;
+      this._saveHelper('input_number.inkoopvergoeding', this._inkoop);
+    });
+    inpInkoop.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
       this._inkoop = isNaN(v) ? 0 : v;
       this._redrawChart();
     });
 
-    this.shadowRoot.getElementById('inp-belasting').addEventListener('input', (e) => {
+    // ── Belasting input ──
+    const inpBelasting = this.shadowRoot.getElementById('inp-belasting');
+    inpBelasting.addEventListener('focus', () => { this._belastingFocused = true; });
+    inpBelasting.addEventListener('blur',  () => {
+      this._belastingFocused = false;
+      this._saveHelper('input_number.energiebelasting', this._belasting);
+    });
+    inpBelasting.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
       this._belasting = isNaN(v) ? 0 : v;
       this._redrawChart();
     });
 
-    this._bindCanvasTooltip();
+    this._bindTooltip();
   }
 
-  _bindCanvasTooltip() {
-    const canvas  = this.shadowRoot.getElementById('chart-canvas');
-    const tooltip = this.shadowRoot.getElementById('tooltip');
-    const scroll  = this.shadowRoot.getElementById('chart-scroll');
+  _saveHelper(entityId, value) {
+    if (!this._hass) return;
+    this._hass.callService('input_number', 'set_value', { entity_id: entityId, value });
+  }
 
-    let touchSX = 0, touchSY = 0, isDragging = false;
+  // Sync from HA only when not focused and HA value actually differs
+  _syncHelpers() {
+    const inpInkoop    = this.shadowRoot.getElementById('inp-inkoop');
+    const inpBelasting = this.shadowRoot.getElementById('inp-belasting');
+    if (!inpInkoop || !inpBelasting) return;
 
-    const getBar = (clientX, canvasRect) => {
-      // Convert clientX → physical pixels on canvas
-      const dpr       = window.devicePixelRatio || 1;
-      const physX     = (clientX - canvasRect.left) * dpr + scroll.scrollLeft * dpr;
-      return this._barData.find(b => physX >= b.x && physX < b.x + b.w) || null;
+    if (!this._inkoopFocused) {
+      const haVal = this._getHelper('input_number.inkoopvergoeding');
+      if (Math.abs(haVal - this._inkoop) > 0.000001) {
+        this._inkoop = haVal;
+        inpInkoop.value = haVal.toFixed(4);
+      }
+    }
+    if (!this._belastingFocused) {
+      const haVal = this._getHelper('input_number.energiebelasting');
+      if (Math.abs(haVal - this._belasting) > 0.000001) {
+        this._belasting = haVal;
+        inpBelasting.value = haVal.toFixed(4);
+      }
+    }
+  }
+
+  // ── Tooltip ───────────────────────────────────────────────────────────
+
+  _bindTooltip() {
+    const barsCanvas = this.shadowRoot.getElementById('bars-canvas');
+    const tooltip    = this.shadowRoot.getElementById('tooltip');
+    const scroll     = this.shadowRoot.getElementById('chart-scroll');
+    const wrapper    = this.shadowRoot.getElementById('chart-wrapper');
+
+    const YAXIS_W = 46;
+    let activeBar = null;
+    let touchSX = 0, touchSY = 0, scrolling = false;
+
+    // Convert clientX to CSS px within the bars canvas
+    const cssXInBars = (clientX) => {
+      const rect = barsCanvas.getBoundingClientRect();
+      return clientX - rect.left;
     };
 
-    const showTip = (bar, relY) => {
-      if (!bar) { hideTip(); return; }
+    const findBar = (clientX) => {
+      const x = cssXInBars(clientX);
+      return this._barData.find(b => x >= b.x && x < b.x + b.w) || null;
+    };
+
+    const positionTip = (bar, clientY) => {
+      requestAnimationFrame(() => {
+        if (!tooltip.classList.contains('visible')) return;
+        const wrapRect = wrapper.getBoundingClientRect();
+        const tipW     = tooltip.offsetWidth;
+        const tipH     = tooltip.offsetHeight;
+        const barsRect = barsCanvas.getBoundingClientRect();
+
+        // Bar center relative to wrapper
+        const barCenterInBars = bar.x + bar.w / 2;
+        const barCenterX = (barsRect.left - wrapRect.left) + barCenterInBars;
+        const relY = clientY - wrapRect.top;
+
+        let tx = barCenterX - tipW / 2;
+        let ty = relY - tipH - 12;
+
+        const maxTx = wrapRect.width - tipW - 4;
+        tx = Math.max(4, Math.min(maxTx, tx));
+        if (ty < 4) ty = relY + 18;
+
+        tooltip.style.left = `${tx}px`;
+        tooltip.style.top  = `${ty}px`;
+      });
+    };
+
+    const showTip = (bar, clientY) => {
+      activeBar = bar;
       this.shadowRoot.getElementById('tt-time').textContent   = `${fmt(bar.start)} – ${fmt(bar.end)} uur`;
       this.shadowRoot.getElementById('tt-market').textContent = `Marktprijs: ${(bar.market*100).toFixed(2)} ct/kWh`;
       const ttAllin = this.shadowRoot.getElementById('tt-allin');
@@ -468,103 +450,104 @@ class NordpoolPriceChart extends HTMLElement {
         ttAllin.style.display = 'none';
       }
       tooltip.classList.add('visible');
-      requestAnimationFrame(() => {
-        const wrapW  = scroll.clientWidth;
-        const dpr    = window.devicePixelRatio || 1;
-        const barScr = bar.x / dpr - scroll.scrollLeft + bar.w / dpr / 2;
-        const tipW   = tooltip.offsetWidth;
-        const tipH   = tooltip.offsetHeight;
-        let tx = barScr - tipW / 2;
-        let ty = relY - tipH - 14;
-        tx = Math.max(4, Math.min(wrapW - tipW - 4, tx));
-        if (ty < 4) ty = relY + 20;
-        tooltip.style.left = `${tx}px`;
-        tooltip.style.top  = `${ty}px`;
-      });
+      positionTip(bar, clientY);
     };
 
-    const hideTip = () => tooltip.classList.remove('visible');
+    const hideTip = () => {
+      activeBar = null;
+      tooltip.classList.remove('visible');
+    };
 
-    canvas.addEventListener('mousemove', (e) => {
-      showTip(getBar(e.clientX, canvas.getBoundingClientRect()), e.clientY - canvas.getBoundingClientRect().top);
+    // ── Mouse ──
+    barsCanvas.addEventListener('mousemove', (e) => {
+      const bar = findBar(e.clientX);
+      if (bar) showTip(bar, e.clientY);
+      else hideTip();
     });
-    canvas.addEventListener('mouseleave', hideTip);
+    barsCanvas.addEventListener('mouseleave', hideTip);
 
-    canvas.addEventListener('touchstart', (e) => {
-      touchSX = e.touches[0].clientX; touchSY = e.touches[0].clientY; isDragging = false;
+    // ── Touch — robust implementation ──
+    barsCanvas.addEventListener('touchstart', (e) => {
+      touchSX   = e.touches[0].clientX;
+      touchSY   = e.touches[0].clientY;
+      scrolling = false;
     }, { passive: true });
 
-    canvas.addEventListener('touchmove', (e) => {
+    barsCanvas.addEventListener('touchmove', (e) => {
       const dx = Math.abs(e.touches[0].clientX - touchSX);
       const dy = Math.abs(e.touches[0].clientY - touchSY);
-      if (dx > 8) isDragging = true;
-      if (dx > dy) e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      showTip(getBar(e.touches[0].clientX, rect), e.touches[0].clientY - rect.top);
+      if (dx > 6) { scrolling = true; }
+      if (dx > dy) e.preventDefault(); // let horizontal scroll work
+
+      if (!scrolling) {
+        const bar = findBar(e.touches[0].clientX);
+        if (bar) showTip(bar, e.touches[0].clientY);
+        else hideTip();
+      } else {
+        hideTip();
+      }
     }, { passive: false });
 
-    canvas.addEventListener('touchend', (e) => {
-      const t    = e.changedTouches[0];
-      const rect = canvas.getBoundingClientRect();
-      if (!isDragging) {
-        showTip(getBar(t.clientX, rect), t.clientY - rect.top);
-        setTimeout(hideTip, 2500);
-      } else { hideTip(); }
+    barsCanvas.addEventListener('touchend', (e) => {
+      if (!scrolling) {
+        const t   = e.changedTouches[0];
+        const bar = findBar(t.clientX);
+        if (bar) {
+          showTip(bar, t.clientY);
+          clearTimeout(this._tipTimer);
+          this._tipTimer = setTimeout(hideTip, 3000);
+        } else {
+          hideTip();
+        }
+      } else {
+        hideTip();
+      }
+    });
+
+    // Hide when scrolling the container
+    scroll.addEventListener('scroll', () => {
+      if (activeBar) positionTip(activeBar, 0); // reposition if visible
     });
   }
 
-  // ── Updates ──────────────────────────────
+  // ── Update DOM ────────────────────────────────────────────────────────
 
   _updateDOM() {
     if (!this._hass) return;
 
-    const el = (id) => this.shadowRoot.getElementById(id);
+    // Sync helpers (respects focus)
+    this._syncHelpers();
 
-    el('card-title').textContent = this._config.title || 'Energieprijzen';
-    const lbl = el('toggle-label');
+    // Header
+    const q = (id) => this.shadowRoot.getElementById(id);
+    q('card-title').textContent = this._config.title||'Energieprijzen';
+    const lbl = q('toggle-label');
     lbl.textContent = this._allIn ? 'All-In' : 'Marktprijs';
     lbl.classList.toggle('active', this._allIn);
-    el('allin-toggle').checked = this._allIn;
-    el('price-config').classList.toggle('visible', this._allIn);
-
-    // Never touch input values here — they belong to the user
+    q('allin-toggle').checked = this._allIn;
+    q('price-config').classList.toggle('visible', this._allIn);
 
     const data = this._getPriceData();
     if (!data.length) return;
 
-    // Cache with market price; display/allin computed fresh each redraw
     this._lastPrices = data.map(d => ({ ...d, market: d.price }));
-
-    const withDisp = this._lastPrices.map(d => ({
-      ...d,
-      allin:   this._toAllIn(d.market),
-      display: this._allIn ? this._toAllIn(d.market) : d.market,
-    }));
-
-    const minItem = withDisp.reduce((a,b) => b.display < a.display ? b : a);
-    const maxItem = withDisp.reduce((a,b) => b.display > a.display ? b : a);
-
-    el('stat-low-val').textContent   = `${(minItem.display*100).toFixed(1)} ct/kWh`;
-    el('stat-low-time').textContent  = `om ${fmt(minItem.start)} uur`;
-    el('stat-high-val').textContent  = `${(maxItem.display*100).toFixed(1)} ct/kWh`;
-    el('stat-high-time').textContent = `om ${fmt(maxItem.start)} uur`;
-
-    this._drawChart(withDisp);
+    this._applyAndDraw();
   }
 
-  _redrawChart() {
+  _applyAndDraw() {
     if (!this._lastPrices?.length) return;
-    const el     = this.shadowRoot.getElementById;
     const prices = this._lastPrices.map(d => ({
       ...d,
       allin:   this._toAllIn(d.market),
       display: this._allIn ? this._toAllIn(d.market) : d.market,
     }));
 
-    // Update stats too
     const minItem = prices.reduce((a,b) => b.display < a.display ? b : a);
     const maxItem = prices.reduce((a,b) => b.display > a.display ? b : a);
+    const avgP    = prices.reduce((s,p) => s + p.display, 0) / prices.length;
+
     const q = (id) => this.shadowRoot.getElementById(id);
+    q('avg-label').textContent      = `Gemiddeld: ${(avgP*100).toFixed(2)} ct/kWh`;
     q('stat-low-val').textContent   = `${(minItem.display*100).toFixed(1)} ct/kWh`;
     q('stat-low-time').textContent  = `om ${fmt(minItem.start)} uur`;
     q('stat-high-val').textContent  = `${(maxItem.display*100).toFixed(1)} ct/kWh`;
@@ -573,125 +556,142 @@ class NordpoolPriceChart extends HTMLElement {
     this._drawChart(prices);
   }
 
-  // ── Canvas drawing ────────────────────────
+  _redrawChart() {
+    this._applyAndDraw();
+  }
+
+  // ── Canvas drawing ────────────────────────────────────────────────────
 
   _drawChart(prices) {
-    const canvas = this.shadowRoot.getElementById('chart-canvas');
+    const yCtx = this.shadowRoot.getElementById('yaxis-canvas')?.getContext('2d');
+    const bCtx = this.shadowRoot.getElementById('bars-canvas')?.getContext('2d');
     const scroll = this.shadowRoot.getElementById('chart-scroll');
-    if (!canvas || !scroll) return;
+    if (!yCtx || !bCtx || !scroll) return;
 
-    const dpr    = window.devicePixelRatio || 1;
-    const CSS_H  = 220;
-    // Bar width: wider on mobile for touch, narrower when many bars
-    const count  = prices.length;
-    const BAR_W  = count > 40 ? 10 : 14;
-    const BAR_GAP = 2;
-    const PAD_TOP = 28;
-    const PAD_BOT = 44;
-    const PAD_L   = 46;
-    const PAD_R   = 14;
+    const dpr      = window.devicePixelRatio || 1;
+    const CSS_H    = 220;
+    const YAXIS_W  = 46;
+    const count    = prices.length;
+    const BAR_W    = count > 40 ? 10 : 14;
+    const BAR_GAP  = 2;
+    const PAD_TOP  = 28;
+    const PAD_BOT  = 42;
+    const BAR_L    = 2;   // small left gap inside bars canvas
+    const PAD_R    = 14;
 
-    const cssW = PAD_L + count * (BAR_W + BAR_GAP) + PAD_R;
-
-    // HiDPI canvas
-    canvas.width        = cssW * dpr;
-    canvas.height       = CSS_H * dpr;
-    canvas.style.width  = `${cssW}px`;
-    canvas.style.height = `${CSS_H}px`;
-
-    const ctx   = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, cssW, CSS_H);
-
+    const barsW = BAR_L + count * (BAR_W + BAR_GAP) + PAD_R;
     const drawH = CSS_H - PAD_TOP - PAD_BOT;
 
-    // Colours from host (shadow root gets HA CSS vars via :host)
+    // Resize canvases (HiDPI)
+    const setCanvas = (canvas, cw, ch) => {
+      canvas.width        = cw * dpr;
+      canvas.height       = ch * dpr;
+      canvas.style.width  = `${cw}px`;
+      canvas.style.height = `${ch}px`;
+    };
+    setCanvas(this.shadowRoot.getElementById('yaxis-canvas'), YAXIS_W, CSS_H);
+    setCanvas(this.shadowRoot.getElementById('bars-canvas'),  barsW,   CSS_H);
+
+    yCtx.scale(dpr, dpr); bCtx.scale(dpr, dpr);
+    yCtx.clearRect(0, 0, YAXIS_W, CSS_H);
+    bCtx.clearRect(0, 0, barsW,   CSS_H);
+
+    // Theme colours
     const cs      = getComputedStyle(this);
     const PRIMARY = cs.getPropertyValue('--primary-color').trim()        || '#026FA1';
     const TXT_SEC = cs.getPropertyValue('--secondary-text-color').trim() || '#9ca3af';
     const DIV     = cs.getPropertyValue('--divider-color').trim()        || 'rgba(128,128,128,0.2)';
 
-    // Price range — always include 0 so negative bars are visible
-    const allP    = prices.map(p => p.display);
-    const minP    = Math.min(...allP);
-    const maxP    = Math.max(...allP);
+    // Price range — always include 0
+    const allP     = prices.map(p => p.display);
+    const minP     = Math.min(...allP);
+    const maxP     = Math.max(...allP);
     const rangeMin = Math.min(minP, 0);
     const rangeMax = Math.max(maxP, 0);
     const range    = (rangeMax - rangeMin) || 0.001;
     const avgP     = allP.reduce((s,v) => s+v, 0) / allP.length;
     const hasNeg   = minP < 0;
 
-    // Color thresholds: bottom 25% green, top 25% red
     const sorted   = [...prices].sort((a,b) => a.display - b.display);
     const cheapThr = sorted[Math.floor(sorted.length * 0.25)]?.display ?? rangeMin;
     const expThr   = sorted[Math.floor(sorted.length * 0.75)]?.display ?? rangeMax;
 
-    const priceToY = (p) => PAD_TOP + drawH - ((p - rangeMin) / range) * drawH;
-    const zeroY    = priceToY(0);
+    const pY = (p) => PAD_TOP + drawH - ((p - rangeMin) / range) * drawH;
+    const zeroY = pY(0);
+    const avgY  = pY(avgP);
 
-    // ── Grid lines ──
-    ctx.lineWidth = 0.5;
-    ctx.setLineDash([3,4]);
+    // ── Y-AXIS canvas ──
+    yCtx.font = '10px system-ui,sans-serif';
+
     for (let i = 0; i <= 5; i++) {
       const p = rangeMin + range * (1 - i/5);
       const y = PAD_TOP + drawH * (i/5);
-      ctx.strokeStyle = DIV;
-      ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(cssW - PAD_R, y); ctx.stroke();
-      ctx.fillStyle  = TXT_SEC;
-      ctx.font       = '10px system-ui,sans-serif';
-      ctx.textAlign  = 'right';
-      ctx.fillText(`${(p*100).toFixed(0)}`, PAD_L - 5, y + 3.5);
+      // Tiny tick connecting to bars area
+      yCtx.strokeStyle = DIV; yCtx.lineWidth = 0.5;
+      yCtx.beginPath(); yCtx.moveTo(YAXIS_W-3, y); yCtx.lineTo(YAXIS_W, y); yCtx.stroke();
+      yCtx.fillStyle = TXT_SEC; yCtx.textAlign = 'right';
+      yCtx.fillText(`${(p*100).toFixed(0)}`, YAXIS_W-5, y+3.5);
     }
-    ctx.setLineDash([]);
 
-    // Y-axis unit label
-    ctx.save();
-    ctx.translate(9, PAD_TOP + drawH/2);
-    ctx.rotate(-Math.PI/2);
-    ctx.fillStyle = TXT_SEC; ctx.font = '9px system-ui,sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('ct/kWh', 0, 0);
-    ctx.restore();
+    // Unit label
+    yCtx.save();
+    yCtx.translate(9, PAD_TOP + drawH/2);
+    yCtx.rotate(-Math.PI/2);
+    yCtx.fillStyle = TXT_SEC; yCtx.font = '9px system-ui,sans-serif'; yCtx.textAlign = 'center';
+    yCtx.fillText('ct/kWh', 0, 0);
+    yCtx.restore();
 
-    // ── Zero line (only when negatives present) ──
+    // Zero label on y-axis when negatives present
     if (hasNeg) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(PAD_L, zeroY); ctx.lineTo(cssW - PAD_R, zeroY); ctx.stroke();
-      ctx.fillStyle  = 'rgba(255,255,255,0.4)';
-      ctx.font       = 'bold 9px system-ui,sans-serif'; ctx.textAlign = 'right';
-      ctx.fillText('0', PAD_L - 5, zeroY + 3.5);
-      ctx.restore();
+      yCtx.fillStyle = 'rgba(255,255,255,0.45)';
+      yCtx.font = 'bold 9px system-ui,sans-serif'; yCtx.textAlign = 'right';
+      yCtx.fillText('0', YAXIS_W-5, zeroY+3.5);
     }
 
-    // ── Average line ──
-    const avgY = priceToY(avgP);
-    ctx.save();
-    ctx.strokeStyle = PRIMARY; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5;
-    ctx.setLineDash([5,5]);
-    ctx.beginPath(); ctx.moveTo(PAD_L, avgY); ctx.lineTo(cssW - PAD_R, avgY); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 0.9;
-    const avgLabel = `⌀ ${(avgP*100).toFixed(1)}`;
-    ctx.font = 'bold 9px system-ui,sans-serif';
-    const lw = ctx.measureText(avgLabel).width + 8;
-    ctx.fillStyle = PRIMARY;
-    roundRect(ctx, PAD_L + 3, avgY - 9, lw, 12, 3); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
-    ctx.fillText(avgLabel, PAD_L + 7, avgY + 0.5);
-    ctx.restore();
+    // Average dashed line on y-axis
+    yCtx.save();
+    yCtx.strokeStyle = PRIMARY; yCtx.lineWidth = 1.5; yCtx.globalAlpha = 0.5;
+    yCtx.setLineDash([5,5]);
+    yCtx.beginPath(); yCtx.moveTo(0, avgY); yCtx.lineTo(YAXIS_W, avgY); yCtx.stroke();
+    yCtx.setLineDash([]); yCtx.restore();
+
+    // ── BARS canvas ──
+
+    // Horizontal grid lines (full width)
+    bCtx.lineWidth = 0.5; bCtx.setLineDash([3,4]);
+    for (let i = 0; i <= 5; i++) {
+      const y = PAD_TOP + drawH * (i/5);
+      bCtx.strokeStyle = DIV;
+      bCtx.beginPath(); bCtx.moveTo(0, y); bCtx.lineTo(barsW, y); bCtx.stroke();
+    }
+    bCtx.setLineDash([]);
+
+    // Zero line
+    if (hasNeg) {
+      bCtx.save();
+      bCtx.strokeStyle = 'rgba(255,255,255,0.22)'; bCtx.lineWidth = 1;
+      bCtx.beginPath(); bCtx.moveTo(0, zeroY); bCtx.lineTo(barsW, zeroY); bCtx.stroke();
+      bCtx.restore();
+    }
+
+    // Average dashed line (no label — shown in header)
+    bCtx.save();
+    bCtx.strokeStyle = PRIMARY; bCtx.lineWidth = 1.5; bCtx.globalAlpha = 0.45;
+    bCtx.setLineDash([5,5]);
+    bCtx.beginPath(); bCtx.moveTo(0, avgY); bCtx.lineTo(barsW, avgY); bCtx.stroke();
+    bCtx.setLineDash([]); bCtx.restore();
 
     // ── Bars ──
-    const now     = new Date();
-    this._barData = [];
+    const now = new Date();
+    this._barData = []; // CSS pixels relative to bars canvas
 
     prices.forEach((item, i) => {
-      const x     = PAD_L + i * (BAR_W + BAR_GAP);
+      const x     = BAR_L + i * (BAR_W + BAR_GAP);
       const isCur = item.start <= now && now < item.end;
       const isNeg = item.display < 0;
-
-      const topY = isNeg ? zeroY                  : priceToY(item.display);
-      const botY = isNeg ? priceToY(item.display)  : zeroY;
-      const barH = Math.max(3, Math.abs(botY - topY));
+      const topY  = isNeg ? zeroY : pY(item.display);
+      const botY  = isNeg ? pY(item.display) : zeroY;
+      const barH  = Math.max(3, Math.abs(botY - topY));
 
       let color;
       if      (isNeg)                    color = '#06b6d4';
@@ -699,17 +699,17 @@ class NordpoolPriceChart extends HTMLElement {
       else if (item.display >= expThr)   color = '#ef4444';
       else                               color = PRIMARY;
 
-      ctx.save();
-      ctx.globalAlpha = isCur ? 1.0 : 0.8;
-      ctx.fillStyle   = color;
-      if (isCur) { ctx.shadowColor = color; ctx.shadowBlur = 14; }
-      roundRect(ctx, x, topY, BAR_W, barH, isNeg ? [0,0,2,2] : [2,2,0,0]);
-      ctx.fill();
-      ctx.restore();
+      bCtx.save();
+      bCtx.globalAlpha = isCur ? 1.0 : 0.82;
+      bCtx.fillStyle   = color;
+      if (isCur) { bCtx.shadowColor = color; bCtx.shadowBlur = 14; }
+      rRect(bCtx, x, topY, BAR_W, barH, isNeg ? [0,0,2,2] : [2,2,0,0]);
+      bCtx.fill();
+      bCtx.restore();
 
-      // Store physical pixel coords for tooltip hit-testing
+      // Store in CSS pixels (relative to bars canvas left edge)
       this._barData.push({
-        x: x * dpr, w: (BAR_W + BAR_GAP) * dpr,
+        x, w: BAR_W + BAR_GAP,
         start: item.start, end: item.end,
         market: item.market, allin: item.allin, display: item.display,
       });
@@ -718,67 +718,61 @@ class NordpoolPriceChart extends HTMLElement {
     // ── "Nu" indicator ──
     const nowIdx = prices.findIndex(p => p.start <= now && now < p.end);
     if (nowIdx >= 0) {
-      const nowX = PAD_L + nowIdx * (BAR_W + BAR_GAP) + BAR_W / 2;
-      ctx.save();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.75;
-      ctx.setLineDash([3,3]);
-      ctx.beginPath(); ctx.moveTo(nowX, PAD_TOP - 4); ctx.lineTo(nowX, PAD_TOP + drawH + 4); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
+      const nowX = BAR_L + nowIdx * (BAR_W + BAR_GAP) + BAR_W / 2;
+      bCtx.save();
+      bCtx.strokeStyle = '#fff'; bCtx.lineWidth = 1.5; bCtx.globalAlpha = 0.75;
+      bCtx.setLineDash([3,3]);
+      bCtx.beginPath(); bCtx.moveTo(nowX, PAD_TOP-4); bCtx.lineTo(nowX, PAD_TOP+drawH+4); bCtx.stroke();
+      bCtx.setLineDash([]);
+      bCtx.globalAlpha = 1;
       const badge = 'Nu';
-      ctx.font = 'bold 9px system-ui,sans-serif'; ctx.textAlign = 'center';
-      const bw = ctx.measureText(badge).width + 7;
-      ctx.fillStyle = '#fff';
-      roundRect(ctx, nowX - bw/2, PAD_TOP - 16, bw, 13, 3); ctx.fill();
-      ctx.fillStyle = '#222';
-      ctx.fillText(badge, nowX, PAD_TOP - 6.5);
-      ctx.restore();
+      bCtx.font = 'bold 9px system-ui,sans-serif'; bCtx.textAlign = 'center';
+      const bw = bCtx.measureText(badge).width + 7;
+      bCtx.fillStyle = '#fff';
+      rRect(bCtx, nowX-bw/2, PAD_TOP-16, bw, 13, 3); bCtx.fill();
+      bCtx.fillStyle = '#222'; bCtx.fillText(badge, nowX, PAD_TOP-6.5);
+      bCtx.restore();
 
       if (!this._nowScrolled) {
         this._nowScrolled = true;
         requestAnimationFrame(() => {
-          scroll.scrollLeft = Math.max(0, nowX - scroll.clientWidth / 2);
+          scroll.scrollLeft = Math.max(0, nowX - scroll.clientWidth/2);
         });
       }
     }
 
-    // ── X-axis: labels every 4h + day separators ──
-    ctx.fillStyle   = TXT_SEC;
-    ctx.font        = '10px system-ui,sans-serif';
-    ctx.strokeStyle = DIV; ctx.lineWidth = 0.5;
-
+    // ── X-axis labels (every 4h) + day separators ──
     let lastDay = null, lastLabelH = -1;
 
     prices.forEach((item, i) => {
-      const x   = PAD_L + i * (BAR_W + BAR_GAP) + BAR_W / 2;
+      const x   = BAR_L + i * (BAR_W + BAR_GAP) + BAR_W/2;
       const day = item.start.getDate();
       const h   = item.start.getHours();
       const m   = item.start.getMinutes();
 
-      // Day separator
       if (lastDay !== null && day !== lastDay) {
-        const sx = PAD_L + i * (BAR_W + BAR_GAP) - BAR_GAP / 2;
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
-        ctx.setLineDash([4,4]);
-        ctx.beginPath(); ctx.moveTo(sx, PAD_TOP - 4); ctx.lineTo(sx, PAD_TOP + drawH + 32); ctx.stroke();
-        ctx.setLineDash([]);
-        const dayStr = item.start.toLocaleDateString('nl-NL', { weekday:'short', day:'numeric', month:'short' });
-        ctx.fillStyle = TXT_SEC; ctx.font = 'bold 9px system-ui,sans-serif';
-        ctx.textAlign = 'left'; ctx.globalAlpha = 0.85;
-        ctx.fillText(dayStr, sx + 4, PAD_TOP + drawH + 38);
-        ctx.restore();
-        lastLabelH = -1; // allow 00:00 at boundary
+        const sx = BAR_L + i * (BAR_W + BAR_GAP) - BAR_GAP/2;
+        bCtx.save();
+        bCtx.strokeStyle = 'rgba(255,255,255,0.15)'; bCtx.lineWidth = 1;
+        bCtx.setLineDash([4,4]);
+        bCtx.beginPath(); bCtx.moveTo(sx, PAD_TOP-4); bCtx.lineTo(sx, PAD_TOP+drawH+32); bCtx.stroke();
+        bCtx.setLineDash([]);
+        const dayStr = item.start.toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short'});
+        bCtx.fillStyle = TXT_SEC; bCtx.font = 'bold 9px system-ui,sans-serif';
+        bCtx.textAlign = 'left'; bCtx.globalAlpha = 0.85;
+        bCtx.fillText(dayStr, sx+4, PAD_TOP+drawH+38);
+        bCtx.restore();
+        lastLabelH = -1;
       }
 
-      // Hour label every 4 hours on the hour: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
       if (m === 0 && h % 4 === 0 && h !== lastLabelH) {
         lastLabelH = h;
-        ctx.fillStyle  = TXT_SEC; ctx.font = '10px system-ui,sans-serif';
-        ctx.textAlign  = 'center'; ctx.globalAlpha = 1;
-        ctx.fillText(`${String(h).padStart(2,'0')}:00`, x, PAD_TOP + drawH + 14);
-        ctx.strokeStyle = DIV;
-        ctx.beginPath(); ctx.moveTo(x, PAD_TOP + drawH + 2); ctx.lineTo(x, PAD_TOP + drawH + 6); ctx.stroke();
+        bCtx.fillStyle  = TXT_SEC;
+        bCtx.font       = '10px system-ui,sans-serif';
+        bCtx.textAlign  = 'center'; bCtx.globalAlpha = 1;
+        bCtx.fillText(`${String(h).padStart(2,'0')}:00`, x, PAD_TOP+drawH+14);
+        bCtx.strokeStyle = DIV; bCtx.lineWidth = 0.5;
+        bCtx.beginPath(); bCtx.moveTo(x, PAD_TOP+drawH+2); bCtx.lineTo(x, PAD_TOP+drawH+6); bCtx.stroke();
       }
 
       lastDay = day;
