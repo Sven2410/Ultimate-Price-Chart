@@ -50,8 +50,11 @@ class NordpoolPriceChartEditor extends HTMLElement {
   }
 
   _data() {
-    return { entity: this._config.entity||'sensor.current_electricity_market_price',
-             title:  this._config.title ||'Energieprijzen' };
+    return {
+      entity:       this._config.entity       || 'sensor.current_electricity_market_price',
+      title:        this._config.title        || 'Energieprijzen',
+      allin_entity: this._config.allin_entity || '',
+    };
   }
 
   _fire() {
@@ -74,8 +77,11 @@ class NordpoolPriceChartEditor extends HTMLElement {
     form.addEventListener('value-changed', (e) => {
       const v = e.detail.value||{};
       let changed = false;
-      for (const k of Object.keys(this._config))
+      // Check all keys from both config and form result
+      const allKeys = new Set([...Object.keys(this._config), ...Object.keys(v)]);
+      for (const k of allKeys) {
         if (v[k]!==undefined && v[k]!==this._config[k]) { this._config[k]=v[k]; changed=true; }
+      }
       if (changed) this._fire();
     });
   }
@@ -103,7 +109,7 @@ class NordpoolPriceChart extends HTMLElement {
     this._inkoop         = 0;
     this._belasting      = 0;
     // Focus tracking — prevents HA from overwriting while user types
-    this._allinInit      = false;
+    this._allinUserSet   = false;
     this._belastingFocused = false;
   }
 
@@ -349,8 +355,8 @@ class NordpoolPriceChart extends HTMLElement {
   _bindEvents() {
     // Toggle
     this.shadowRoot.getElementById('allin-toggle').addEventListener('change', (e) => {
-      this._allIn = e.target.checked;
-      // Persist via HA input_boolean if configured
+      this._allIn      = e.target.checked;
+      this._allinUserSet = true;  // stop syncing from HA, user is in control
       const ent = this._config.allin_entity;
       if (ent && this._hass) {
         this._hass.callService('input_boolean',
@@ -621,9 +627,8 @@ class NordpoolPriceChart extends HTMLElement {
     // Sync helpers (respects focus)
     this._syncHelpers();
 
-    // Restore All-In state from HA input_boolean (once per session load)
-    if (!this._allinInit) {
-      this._allinInit = true;
+    // Restore All-In state from HA input_boolean (sync until user manually toggles)
+    if (!this._allinUserSet) {
       const ent = this._config.allin_entity;
       if (ent && this._hass?.states[ent]) {
         this._allIn = this._hass.states[ent].state === 'on';
