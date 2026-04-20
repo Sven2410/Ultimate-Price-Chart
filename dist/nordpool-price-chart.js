@@ -210,17 +210,31 @@ class NordpoolPriceChart extends HTMLElement {
   #yaxis-canvas { display:block; flex-shrink:0; }
   .chart-scroll {
     flex:1; min-width:0;
-    overflow-x:scroll;       /* always show scrollbar */
+    overflow-x:scroll;
     overflow-y:hidden;
     -webkit-overflow-scrolling:touch;
-    scrollbar-width:thin;
-    scrollbar-color:var(--primary-color) rgba(128,128,128,0.12);
+    scrollbar-width:none;
     cursor:crosshair;
   }
-  .chart-scroll::-webkit-scrollbar { height:6px; }
-  .chart-scroll::-webkit-scrollbar-track { background:rgba(128,128,128,0.1); border-radius:3px; }
-  .chart-scroll::-webkit-scrollbar-thumb { background:var(--primary-color); border-radius:3px; opacity:0.8; }
+  .chart-scroll::-webkit-scrollbar { display:none; }
   #bars-canvas { display:block; }
+
+  /* Custom scrollbar — always visible, works on iOS/Android */
+  .scrollbar-row { display:flex; align-items:center; margin:4px 0 10px; }
+  .scrollbar-spacer { flex-shrink:0; width:46px; }
+  .scrollbar-track {
+    flex:1; min-width:0; height:6px;
+    background:rgba(128,128,128,0.18); border-radius:3px;
+    position:relative; cursor:pointer;
+    touch-action:none; user-select:none; -webkit-user-select:none;
+  }
+  .scrollbar-thumb {
+    position:absolute; top:0; left:0; height:100%;
+    min-width:28px; background:var(--primary-color);
+    border-radius:3px; cursor:grab; opacity:0.75; transition:opacity 0.15s;
+    touch-action:none;
+  }
+  .scrollbar-thumb.dragging { opacity:1; cursor:grabbing; }
 
   /* Tooltip — positioned relative to .chart-wrapper */
   .tooltip {
@@ -293,6 +307,13 @@ class NordpoolPriceChart extends HTMLElement {
     </div>
   </div>
 
+  <div class="scrollbar-row">
+    <div class="scrollbar-spacer"></div>
+    <div class="scrollbar-track" id="scrollbar-track">
+      <div class="scrollbar-thumb" id="scrollbar-thumb"></div>
+    </div>
+  </div>
+
   <div class="stats">
     <div class="stat-card">
       <div class="stat-label"><span class="dot" style="background:#22c55e"></span>Laagste prijs</div>
@@ -361,6 +382,7 @@ class NordpoolPriceChart extends HTMLElement {
     });
 
     this._bindTooltip();
+    this._bindScrollbar();
   }
 
   _saveHelper(entityId, value) {
@@ -391,6 +413,82 @@ class NordpoolPriceChart extends HTMLElement {
   }
 
   // ── Tooltip ───────────────────────────────────────────────────────────
+
+  _bindScrollbar() {
+    const scroll = this.shadowRoot.getElementById('chart-scroll');
+    const track  = this.shadowRoot.getElementById('scrollbar-track');
+    const thumb  = this.shadowRoot.getElementById('scrollbar-thumb');
+    if (!scroll || !track || !thumb) return;
+
+    // Update thumb size + position based on scroll state
+    const update = () => {
+      const visible  = scroll.clientWidth;
+      const total    = scroll.scrollWidth;
+      const trackW   = track.clientWidth;
+      if (total <= visible) { thumb.style.display = 'none'; return; }
+      thumb.style.display = 'block';
+      const ratio    = visible / total;
+      const thumbW   = Math.max(28, trackW * ratio);
+      const maxLeft  = trackW - thumbW;
+      const thumbX   = (scroll.scrollLeft / (total - visible)) * maxLeft;
+      thumb.style.width = `${thumbW}px`;
+      thumb.style.left  = `${Math.min(maxLeft, thumbX)}px`;
+    };
+
+    scroll.addEventListener('scroll', update, { passive: true });
+    new ResizeObserver(update).observe(scroll);
+    // Also update after chart is drawn (scrollWidth changes)
+    this._updateScrollbar = update;
+
+    // ── Drag thumb ──
+    let dragging = false, startClientX = 0, startScrollLeft = 0;
+
+    const startDrag = (clientX) => {
+      dragging       = true;
+      startClientX   = clientX;
+      startScrollLeft = scroll.scrollLeft;
+      thumb.classList.add('dragging');
+    };
+    const moveDrag = (clientX) => {
+      if (!dragging) return;
+      const trackW  = track.clientWidth;
+      const thumbW  = thumb.offsetWidth;
+      const maxLeft = trackW - thumbW;
+      const maxScroll = scroll.scrollWidth - scroll.clientWidth;
+      const dx = clientX - startClientX;
+      scroll.scrollLeft = startScrollLeft + (dx / maxLeft) * maxScroll;
+    };
+    const endDrag = () => {
+      dragging = false;
+      thumb.classList.remove('dragging');
+    };
+
+    // Mouse drag
+    thumb.addEventListener('mousedown', (e) => { e.preventDefault(); startDrag(e.clientX); });
+    window.addEventListener('mousemove', (e) => moveDrag(e.clientX));
+    window.addEventListener('mouseup',   endDrag);
+
+    // Touch drag
+    thumb.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      startDrag(e.touches[0].clientX);
+    }, { passive: true });
+    thumb.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      moveDrag(e.touches[0].clientX);
+    }, { passive: false });
+    thumb.addEventListener('touchend', endDrag);
+
+    // Click on track to jump
+    track.addEventListener('click', (e) => {
+      if (e.target === thumb) return;
+      const rect      = track.getBoundingClientRect();
+      const clickPos  = (e.clientX - rect.left) / rect.width;
+      scroll.scrollLeft = clickPos * (scroll.scrollWidth - scroll.clientWidth);
+    });
+
+    update();
+  }
 
   _bindTooltip() {
     const barsCanvas = this.shadowRoot.getElementById('bars-canvas');
@@ -740,6 +838,9 @@ class NordpoolPriceChart extends HTMLElement {
         });
       }
     }
+
+    // Update custom scrollbar thumb after draw
+    requestAnimationFrame(() => { this._updateScrollbar?.(); });
 
     // ── X-axis labels (every 4h) + day separators ──
     let lastDay = null, lastLabelH = -1;
